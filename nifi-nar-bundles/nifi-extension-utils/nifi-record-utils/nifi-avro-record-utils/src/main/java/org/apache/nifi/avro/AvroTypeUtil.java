@@ -559,7 +559,7 @@ public class AvroTypeUtil {
         return new ImmutablePair<>(fieldName, field);
     }
 
-    public static GenericRecord createAvroRecord(final Record record, final Schema avroSchema) throws IOException {
+    public static GenericRecord createAvroRecord(final GenericData.Record record, final Schema avroSchema) throws IOException {
         return createAvroRecord(record, avroSchema, StandardCharsets.UTF_8);
     }
 
