@@ -59,6 +59,21 @@ final class KafkaProcessorUtils {
     static final AllowableValue HEX_ENCODING = new AllowableValue("hex", "Hex Encoded",
             "The key is interpreted as arbitrary binary data and is encoded using hexadecimal characters with uppercase letters");
 
+
+    static final AllowableValue ROUND_ROBIN_PARTITIONING = new AllowableValue(Partitioners.RoundRobinPartitioner.class.getName(),
+            Partitioners.RoundRobinPartitioner.class.getSimpleName(),
+            "Messages will be assigned partitions in a round-robin fashion, sending the first message to Partition 1, "
+                    + "the next Partition to Partition 2, and so on, wrapping as necessary.");
+    static final AllowableValue RANDOM_PARTITIONING = new AllowableValue("org.apache.kafka.clients.producer.internals.DefaultPartitioner",
+            "DefaultPartitioner", "Messages will be assigned to random partitions.");
+
+    static final AllowableValue STATIC_PARTITIONER = new AllowableValue("static-partitioner",
+            "StaticPartitioner", "Messages will be assigned to partitions based on partition id");
+
+    static final AllowableValue CUSTOM_PARTITIONER = new AllowableValue("custom-partitioner",
+            "CustomPartitioner", "Messages will be assigned to partitions based custom partitioner class");
+
+
     static final Pattern HEX_KEY_PATTERN = Pattern.compile("(?:[0123456789abcdefABCDEF]{2})+");
 
     static final String KAFKA_KEY = "kafka.key";
@@ -81,6 +96,17 @@ final class KafkaProcessorUtils {
             .expressionLanguageSupported(ExpressionLanguageScope.VARIABLE_REGISTRY)
             .defaultValue("localhost:9092")
             .build();
+
+    static final PropertyDescriptor PARTITION_STRATEGY = new PropertyDescriptor.Builder()
+            .name(ProducerConfig.PARTITIONER_CLASS_CONFIG)
+            .displayName("Partitioner Strategy")
+            .description("Specifies which class to use to compute a partition id for a message. Corresponds to Kafka's 'partitioner.class' property.")
+            .allowableValues(ROUND_ROBIN_PARTITIONING, RANDOM_PARTITIONING, STATIC_PARTITIONER, CUSTOM_PARTITIONER)
+            .defaultValue(RANDOM_PARTITIONING.getValue())
+            .addValidator(new KafkaProcessorUtils.KafkaPartitionStrategyValidator(ProducerConfig.class))
+            .required(false)
+            .build();
+
     static final PropertyDescriptor SECURITY_PROTOCOL = new PropertyDescriptor.Builder()
             .name("security.protocol")
             .displayName("Security Protocol")
@@ -133,6 +159,34 @@ final class KafkaProcessorUtils {
         .identifiesControllerService(KerberosCredentialsService.class)
         .required(false)
         .build();
+
+    static final PropertyDescriptor PARTITION = new PropertyDescriptor.Builder()
+            .name("partition-id")
+            .displayName("Partition Id")
+            .description("This allows you to specify the partition id, where all data will be sent to this partition")
+            .addValidator(StandardValidators.INTEGER_VALIDATOR)
+            .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
+            .required(false)
+            .build();
+
+    static final PropertyDescriptor CUSTOM_PARTITIONER_CLASS = new PropertyDescriptor.Builder()
+            .name("custom-partitioner-class")
+            .displayName("Custom Partitioner Class")
+            .description("Specify the class name of custom partitioner")
+            .expressionLanguageSupported(ExpressionLanguageScope.VARIABLE_REGISTRY)
+            .addValidator(new KafkaProcessorUtils.KafkaPartitionStrategyValidator(ProducerConfig.class))
+            .required(false)
+            .build();
+
+    static final PropertyDescriptor CUSTOM_PARTITIONER_JARS = new PropertyDescriptor.Builder()
+            .name("custom-partitioner-jars")
+            .displayName("Custom Partitioner Jars")
+            .description("Specifies .jar files or directories to add to the ClassPath in order to find the Custom Patitioner Class")
+            .required(false)
+            .addValidator(StandardValidators.URI_LIST_VALIDATOR)
+            .dynamicallyModifiesClasspath(true)
+            .expressionLanguageSupported(ExpressionLanguageScope.VARIABLE_REGISTRY)
+            .build();
 
     static List<PropertyDescriptor> getCommonPropertyDescriptors() {
         return Arrays.asList(
@@ -256,6 +310,42 @@ final class KafkaProcessorUtils {
 
         return results;
     }
+
+    static final class KafkaPartitionStrategyValidator implements Validator {
+
+        final Class<?> classType;
+
+        public KafkaPartitionStrategyValidator(final Class<?> classType) {
+            this.classType = classType;
+        }
+
+        @Override
+        public ValidationResult validate(final String subject, final String value, final ValidationContext validationContext) {
+
+            final String partitionStrategy = validationContext.getProperty(PARTITION_STRATEGY).evaluateAttributeExpressions().getValue();
+            final String partition = validationContext.getProperty(PARTITION).evaluateAttributeExpressions().getValue();
+            final String partitionerClass = validationContext.getProperty(CUSTOM_PARTITIONER_CLASS).evaluateAttributeExpressions().getValue();
+            final String partitionerJars = validationContext.getProperty(CUSTOM_PARTITIONER_JARS).evaluateAttributeExpressions().getValue();
+
+            if(partitionStrategy.equalsIgnoreCase(CUSTOM_PARTITIONER.getValue()) && (partitionerClass == null || partitionerJars == null)) {
+                return new ValidationResult.Builder()
+                        .subject(subject)
+                        .valid(false)
+                        .explanation("Set All Required Options for partition strategy: " + CUSTOM_PARTITIONER.getValue())
+                        .build();
+            }
+
+            if(partitionStrategy.equalsIgnoreCase(STATIC_PARTITIONER.getValue()) && partition == null) {
+                return new ValidationResult.Builder()
+                        .subject(subject)
+                        .valid(false)
+                        .explanation("Set All Required Options for partition strategy: " + STATIC_PARTITIONER.getValue())
+                        .build();
+            }
+            return new ValidationResult.Builder().subject(subject).valid(true).build();
+        }
+    };
+
 
     static final class KafkaConfigValidator implements Validator {
 

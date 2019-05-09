@@ -265,7 +265,10 @@ public class PublishKafkaRecord_2_0 extends AbstractProcessor {
         properties.add(MAX_REQUEST_SIZE);
         properties.add(ACK_WAIT_TIME);
         properties.add(METADATA_WAIT_TIME);
-        properties.add(PARTITION_CLASS);
+        properties.add(KafkaProcessorUtils.PARTITION_STRATEGY);
+        properties.add(KafkaProcessorUtils.PARTITION);
+        properties.add(KafkaProcessorUtils.CUSTOM_PARTITIONER_CLASS);
+        properties.add(KafkaProcessorUtils.CUSTOM_PARTITIONER_JARS);
         properties.add(COMPRESSION_CODEC);
 
         PROPERTIES = Collections.unmodifiableList(properties);
@@ -358,6 +361,7 @@ public class PublishKafkaRecord_2_0 extends AbstractProcessor {
 
     @Override
     public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException {
+        final boolean usePartition = context.getProperty(KafkaProcessorUtils.PARTITION).isSet();
         final List<FlowFile> flowFiles = session.get(FlowFileFilters.newSizeBasedFilter(1, DataUnit.MB, 500));
         if (flowFiles.isEmpty()) {
             return;
@@ -401,7 +405,12 @@ public class PublishKafkaRecord_2_0 extends AbstractProcessor {
 
                 final String topic = context.getProperty(TOPIC).evaluateAttributeExpressions(flowFile).getValue();
                 final String messageKeyField = context.getProperty(MESSAGE_KEY_FIELD).evaluateAttributeExpressions(flowFile).getValue();
-
+                final Integer partition;
+                if(usePartition) {
+                    partition = Integer.valueOf(context.getProperty(KafkaProcessorUtils.PARTITION).evaluateAttributeExpressions(flowFile).getValue());
+                } else {
+                    partition = null;
+                }
                 try {
                     session.read(flowFile, new InputStreamCallback() {
                         @Override
@@ -411,7 +420,7 @@ public class PublishKafkaRecord_2_0 extends AbstractProcessor {
                                 final RecordSet recordSet = reader.createRecordSet();
 
                                 final RecordSchema schema = writerFactory.getSchema(flowFile.getAttributes(), recordSet.getSchema());
-                                lease.publish(flowFile, recordSet, writerFactory, schema, messageKeyField, topic);
+                                lease.publish(flowFile, partition, recordSet, writerFactory, schema, messageKeyField, topic);
                             } catch (final SchemaNotFoundException | MalformedRecordException e) {
                                 throw new ProcessException(e);
                             }

@@ -19,14 +19,18 @@ package org.apache.nifi.processors.kafka.pubsub;
 
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.processor.ProcessContext;
+import org.apache.nifi.processor.Processor;
+import org.apache.nifi.reporting.InitializationException;
 import org.apache.nifi.util.MockFlowFile;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -70,6 +74,66 @@ public class TestPublishKafka_2_0 {
         runner.setProperty(PublishKafka_2_0.DELIVERY_GUARANTEE, PublishKafka_2_0.DELIVERY_REPLICATED);
     }
 
+//    @Test
+//    public void validateNotValidForNonExistingLibPath() throws Exception {
+//        TestRunner runner = TestRunners.newTestRunner(mock(Processor.class));
+//        JMSConnectionFactoryProvider cfProvider = new JMSConnectionFactoryProvider();
+//        runner.addControllerService("cfProvider", cfProvider);
+//        runner.setProperty(cfProvider, KafkaProcessorUtils.BROKER_URI, "myhost:1234");
+//
+//        runner.setProperty(cfProvider, JMSConnectionFactoryProvider.CLIENT_LIB_DIR_PATH, "foo");
+//        runner.setProperty(cfProvider, JMSConnectionFactoryProvider.CONNECTION_FACTORY_IMPL,
+//                "org.apache.nifi.jms.testcflib.TestConnectionFactory");
+//        runner.assertNotValid(cfProvider);
+//    }
+//
+//    @Test
+//    public void validateELExpression() throws InitializationException, URISyntaxException {
+//        TestRunner runner = TestRunners.newTestRunner(mock(Processor.class));
+//        runner.setValidateExpressionUsage(true);
+//        JMSConnectionFactoryProvider cfProvider = new JMSConnectionFactoryProvider();
+//        String clientLib = this.getClass().getResource("/dummy-lib.jar").toURI().toString();
+//        runner.addControllerService("cfProvider", cfProvider);
+//
+//        runner.setVariable("broker.uri", "tcp://0.0.0.0:616161");
+//        runner.setVariable("client.lib", clientLib);
+//
+//        runner.setProperty(cfProvider, JMSConnectionFactoryProvider.BROKER_URI, "${broker.uri}");
+//        runner.setProperty(cfProvider, JMSConnectionFactoryProvider.CLIENT_LIB_DIR_PATH, "${client.lib}");
+//        runner.setProperty(cfProvider, JMSConnectionFactoryProvider.CONNECTION_FACTORY_IMPL,
+//                "org.apache.nifi.jms.testcflib.TestConnectionFactory");
+//        runner.assertValid(cfProvider);
+//    }
+//
+//    @Test
+//    public void testClientLibResourcesLoaded() throws InitializationException, URISyntaxException {
+//        TestRunner runner = TestRunners.newTestRunner(mock(Processor.class));
+//        runner.setValidateExpressionUsage(true);
+//
+//        JMSConnectionFactoryProvider cfProvider = new JMSConnectionFactoryProvider();
+//
+//        String clientLib = this.getClass().getResource("/dummy-lib.jar").toURI().toString() + "," +
+//                this.getClass().getResource("/dummy-lib-2.jar").toURI().toString() + "," +
+//                this.getClass().getResource("/dummy.conf").toURI().toString() + ",";
+//
+//        runner.addControllerService("cfProvider", cfProvider);
+//
+//        runner.setVariable("broker.uri", "tcp://0.0.0.0:616161");
+//        runner.setVariable("client.lib", clientLib);
+//
+//        runner.setProperty(cfProvider, JMSConnectionFactoryProvider.BROKER_URI, "${broker.uri}");
+//        runner.setProperty(cfProvider, JMSConnectionFactoryProvider.CLIENT_LIB_DIR_PATH, "${client.lib}");
+//        runner.setProperty(cfProvider, JMSConnectionFactoryProvider.CONNECTION_FACTORY_IMPL,
+//                "org.apache.nifi.jms.testcflib.TestConnectionFactory");
+//
+//        runner.assertValid(cfProvider);
+//
+//        ClassLoader loader = runner.getClass().getClassLoader();
+//        Assert.assertTrue(loader.getResource("dummy.conf") != null);
+//        Assert.assertTrue(loader.getResource("dummy-lib.jar") != null);
+//        Assert.assertTrue(loader.getResource("dummy-lib-2.jar") != null);
+//    }
+
     @Test
     public void testSingleSuccess() throws IOException {
         final MockFlowFile flowFile = runner.enqueue("hello world");
@@ -79,7 +143,7 @@ public class TestPublishKafka_2_0 {
         runner.run();
         runner.assertAllFlowFilesTransferred(PublishKafka_2_0.REL_SUCCESS, 1);
 
-        verify(mockLease, times(1)).publish(any(FlowFile.class), any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
+        verify(mockLease, times(1)).publish(any(FlowFile.class), null, any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
         verify(mockLease, times(1)).complete();
         verify(mockLease, times(0)).poison();
         verify(mockLease, times(1)).close();
@@ -98,7 +162,7 @@ public class TestPublishKafka_2_0 {
         runner.run();
         runner.assertAllFlowFilesTransferred(PublishKafka_2_0.REL_SUCCESS, 3);
 
-        verify(mockLease, times(3)).publish(any(FlowFile.class), any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
+        verify(mockLease, times(3)).publish(any(FlowFile.class), null, any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
         verify(mockLease, times(1)).complete();
         verify(mockLease, times(0)).poison();
         verify(mockLease, times(1)).close();
@@ -113,7 +177,7 @@ public class TestPublishKafka_2_0 {
         runner.run();
         runner.assertAllFlowFilesTransferred(PublishKafka_2_0.REL_FAILURE, 1);
 
-        verify(mockLease, times(1)).publish(any(FlowFile.class), any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
+        verify(mockLease, times(1)).publish(any(FlowFile.class), null, any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
         verify(mockLease, times(1)).complete();
         verify(mockLease, times(1)).close();
     }
@@ -130,7 +194,7 @@ public class TestPublishKafka_2_0 {
         runner.run();
         runner.assertAllFlowFilesTransferred(PublishKafka_2_0.REL_FAILURE, 3);
 
-        verify(mockLease, times(3)).publish(any(FlowFile.class), any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
+        verify(mockLease, times(3)).publish(any(FlowFile.class), null, any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
         verify(mockLease, times(1)).complete();
         verify(mockLease, times(1)).close();
     }
@@ -152,7 +216,7 @@ public class TestPublishKafka_2_0 {
         runner.run();
         runner.assertAllFlowFilesTransferred(PublishKafka_2_0.REL_SUCCESS, 2);
 
-        verify(mockLease, times(2)).publish(any(FlowFile.class), any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
+        verify(mockLease, times(2)).publish(any(FlowFile.class), null,any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
         verify(mockLease, times(1)).complete();
         verify(mockLease, times(0)).poison();
         verify(mockLease, times(1)).close();
@@ -191,7 +255,7 @@ public class TestPublishKafka_2_0 {
         runner.assertTransferCount(PublishKafka_2_0.REL_SUCCESS, 0);
         runner.assertTransferCount(PublishKafka_2_0.REL_FAILURE, 4);
 
-        verify(mockLease, times(4)).publish(any(FlowFile.class), any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
+        verify(mockLease, times(4)).publish(any(FlowFile.class), null,any(InputStream.class), eq(null), eq(null), eq(TOPIC_NAME));
         verify(mockLease, times(1)).complete();
         verify(mockLease, times(1)).close();
 

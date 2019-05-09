@@ -111,7 +111,7 @@ public class PublisherLease implements Closeable {
         rollback();
     }
 
-    void publish(final FlowFile flowFile, final InputStream flowFileContent, final byte[] messageKey, final byte[] demarcatorBytes, final String topic) throws IOException {
+    void publish(final FlowFile flowFile, final Integer partition, final InputStream flowFileContent, final byte[] messageKey, final byte[] demarcatorBytes, final String topic) throws IOException {
         if (tracker == null) {
             tracker = new InFlightMessageTracker(logger);
         }
@@ -126,13 +126,13 @@ public class PublisherLease implements Closeable {
                 // Send FlowFile content as it is, to support sending 0 byte message.
                 messageContent = new byte[(int) flowFile.getSize()];
                 StreamUtils.fillBuffer(flowFileContent, messageContent);
-                publish(flowFile, messageKey, messageContent, topic, tracker);
+                publish(flowFile, partition, messageKey, messageContent, topic, tracker);
                 return;
             }
 
             try (final StreamDemarcator demarcator = new StreamDemarcator(flowFileContent, demarcatorBytes, maxMessageSize)) {
                 while ((messageContent = demarcator.nextToken()) != null) {
-                    publish(flowFile, messageKey, messageContent, topic, tracker);
+                    publish(flowFile, partition, messageKey, messageContent, topic, tracker);
 
                     if (tracker.isFailed(flowFile)) {
                         // If we have a failure, don't try to send anything else.
@@ -149,7 +149,7 @@ public class PublisherLease implements Closeable {
         }
     }
 
-    void publish(final FlowFile flowFile, final RecordSet recordSet, final RecordSetWriterFactory writerFactory, final RecordSchema schema,
+    void publish(final FlowFile flowFile, final Integer partition, final RecordSet recordSet, final RecordSetWriterFactory writerFactory, final RecordSchema schema,
         final String messageKeyField, final String topic) throws IOException {
         if (tracker == null) {
             tracker = new InFlightMessageTracker(logger);
@@ -176,7 +176,7 @@ public class PublisherLease implements Closeable {
                 final String key = messageKeyField == null ? null : record.getAsString(messageKeyField);
                 final byte[] messageKey = (key == null) ? null : key.getBytes(StandardCharsets.UTF_8);
 
-                publish(flowFile, additionalAttributes, messageKey, messageContent, topic, tracker);
+                publish(flowFile, partition, additionalAttributes, messageKey, messageContent, topic, tracker);
 
                 if (tracker.isFailed(flowFile)) {
                     // If we have a failure, don't try to send anything else.
@@ -217,14 +217,14 @@ public class PublisherLease implements Closeable {
         }
     }
 
-    protected void publish(final FlowFile flowFile, final byte[] messageKey, final byte[] messageContent, final String topic, final InFlightMessageTracker tracker) {
-        publish(flowFile, Collections.emptyMap(), messageKey, messageContent, topic, tracker);
+    protected void publish(final FlowFile flowFile, final Integer partition, final byte[] messageKey, final byte[] messageContent, final String topic, final InFlightMessageTracker tracker) {
+        publish(flowFile, partition, Collections.emptyMap(), messageKey, messageContent, topic, tracker);
     }
 
-    protected void publish(final FlowFile flowFile, final Map<String, String> additionalAttributes,
+    protected void publish(final FlowFile flowFile, final Integer partition , final Map<String, String> additionalAttributes,
         final byte[] messageKey, final byte[] messageContent, final String topic, final InFlightMessageTracker tracker) {
 
-        final ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, null, messageKey, messageContent);
+        final ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, partition, messageKey, messageContent);
         addHeaders(flowFile, additionalAttributes, record);
 
         producer.send(record, new Callback() {

@@ -86,13 +86,6 @@ public class PublishKafka_2_0 extends AbstractProcessor {
         "FlowFile will be routed to success after successfully writing the content to a Kafka node, "
             + "without waiting for a response. This provides the best performance but may result in data loss.");
 
-    static final AllowableValue ROUND_ROBIN_PARTITIONING = new AllowableValue(Partitioners.RoundRobinPartitioner.class.getName(),
-        Partitioners.RoundRobinPartitioner.class.getSimpleName(),
-        "Messages will be assigned partitions in a round-robin fashion, sending the first message to Partition 1, "
-            + "the next Partition to Partition 2, and so on, wrapping as necessary.");
-    static final AllowableValue RANDOM_PARTITIONING = new AllowableValue("org.apache.kafka.clients.producer.internals.DefaultPartitioner",
-        "DefaultPartitioner", "Messages will be assigned to random partitions.");
-
     static final AllowableValue UTF8_ENCODING = new AllowableValue("utf-8", "UTF-8 Encoded", "The key is interpreted as a UTF-8 Encoded string.");
     static final AllowableValue HEX_ENCODING = new AllowableValue("hex", "Hex Encoded",
         "The key is interpreted as arbitrary binary data that is encoded using hexadecimal characters with uppercase letters.");
@@ -181,14 +174,7 @@ public class PublishKafka_2_0 extends AbstractProcessor {
             + "To enter special character such as 'new line' use CTRL+Enter or Shift+Enter, depending on your OS.")
         .build();
 
-    static final PropertyDescriptor PARTITION_CLASS = new PropertyDescriptor.Builder()
-        .name(ProducerConfig.PARTITIONER_CLASS_CONFIG)
-        .displayName("Partitioner class")
-        .description("Specifies which class to use to compute a partition id for a message. Corresponds to Kafka's 'partitioner.class' property.")
-        .allowableValues(ROUND_ROBIN_PARTITIONING, RANDOM_PARTITIONING)
-        .defaultValue(RANDOM_PARTITIONING.getValue())
-        .required(false)
-        .build();
+
 
     static final PropertyDescriptor COMPRESSION_CODEC = new PropertyDescriptor.Builder()
         .name(ProducerConfig.COMPRESSION_TYPE_CONFIG)
@@ -261,7 +247,10 @@ public class PublishKafka_2_0 extends AbstractProcessor {
         properties.add(MAX_REQUEST_SIZE);
         properties.add(ACK_WAIT_TIME);
         properties.add(METADATA_WAIT_TIME);
-        properties.add(PARTITION_CLASS);
+        properties.add(KafkaProcessorUtils.PARTITION_STRATEGY);
+        properties.add(KafkaProcessorUtils.PARTITION);
+        properties.add(KafkaProcessorUtils.CUSTOM_PARTITIONER_CLASS);
+        properties.add(KafkaProcessorUtils.CUSTOM_PARTITIONER_JARS);
         properties.add(COMPRESSION_CODEC);
 
         PROPERTIES = Collections.unmodifiableList(properties);
@@ -355,6 +344,7 @@ public class PublishKafka_2_0 extends AbstractProcessor {
     @Override
     public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException {
         final boolean useDemarcator = context.getProperty(MESSAGE_DEMARCATOR).isSet();
+        final boolean usePartition = context.getProperty(KafkaProcessorUtils.PARTITION).isSet();
 
         final List<FlowFile> flowFiles = session.get(FlowFileFilters.newSizeBasedFilter(250, DataUnit.KB, 500));
         if (flowFiles.isEmpty()) {
@@ -400,11 +390,18 @@ public class PublishKafka_2_0 extends AbstractProcessor {
                     demarcatorBytes = null;
                 }
 
+                final Integer partition;
+                if(usePartition) {
+                    partition = Integer.valueOf(context.getProperty(KafkaProcessorUtils.PARTITION).evaluateAttributeExpressions(flowFile).getValue());
+                } else {
+                    partition = null;
+                }
+
                 session.read(flowFile, new InputStreamCallback() {
                     @Override
                     public void process(final InputStream rawIn) throws IOException {
                         try (final InputStream in = new BufferedInputStream(rawIn)) {
-                            lease.publish(flowFile, in, messageKey, demarcatorBytes, topic);
+                            lease.publish(flowFile, partition, in, messageKey, demarcatorBytes, topic);
                         }
                     }
                 });
